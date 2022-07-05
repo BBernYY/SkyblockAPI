@@ -1,4 +1,4 @@
-def send_message(webhook_link, content): # function for uploading data
+def send_message(webhook_link, content): # function for uploading data 
     from discord_webhook import DiscordWebhook
     from os import environ
     webhook = DiscordWebhook(url=environ['API_DISCORD'], content=content)
