@@ -1,1 +1,0 @@
-python main_test.py %~1
