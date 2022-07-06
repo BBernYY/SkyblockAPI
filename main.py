@@ -18,7 +18,7 @@ def main_loop(_, hypixel_api_key, webhook_link, name):
     current_session = {"online": False}
     uuid = requests.get("https://api.mojang.com/users/profiles/minecraft/"+name).json()['id']
     while True:
-        df = requests.get('https://api.hypixel.net/status?key='+hypixel_api_key+'&uuid='+uuid).json()
+        df = requests.get(hypixel_api_key+uuid).json()
         if df['session'] != current_session:
             current_session = df['session']
             send_message(webhook_link, write_message(current_session, name))
@@ -27,6 +27,7 @@ def main_loop(_, hypixel_api_key, webhook_link, name):
 if __name__ == '__main__': # checks if the code is ran as a file
   from kwargs import kwargs
   if kwargs['_']:
+    kwargs['hypixel_api_key'] = 'https://api.hypixel.net/status?key='+kwargs['hypixel_api_key']+'&uuid='
     print("Using external settings.")
     main_loop(**kwargs)
   else:
