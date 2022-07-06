@@ -1,7 +1,6 @@
 def send_message(webhook_link, content): # function for uploading data 
     from discord_webhook import DiscordWebhook
-    from os import environ
-    webhook = DiscordWebhook(url=environ['API_DISCORD'], content=content)
+    webhook = DiscordWebhook(url=webhook_link, content=content)
     webhook.execute() # send message on webhook
 def write_message(session, name): # function for formatting data
     import datetime as dt
@@ -14,13 +13,12 @@ def write_message(session, name): # function for formatting data
     return message
 
 def main_loop(_, hypixel_api_key, webhook_link, name):
-    from os import environ
     import requests
     from time import sleep
-    current_session = {"online": False} # on startup, only send message if player is online
+    current_session = {"online": False}
     uuid = requests.get("https://api.mojang.com/users/profiles/minecraft/"+name).json()['id']
     while True:
-        df = requests.get('https://api.hypixel.net/status?key='+environ['API_HYPIXEL']+'&uuid='+uuid).json()
+        df = requests.get('https://api.hypixel.net/status?key='+hypixel_api_key+'&uuid='+uuid).json()
         if df['session'] != current_session:
             current_session = df['session']
             send_message(webhook_link, write_message(current_session, name))
@@ -29,6 +27,8 @@ def main_loop(_, hypixel_api_key, webhook_link, name):
 if __name__ == '__main__': # checks if the code is ran as a file
   from kwargs import kwargs
   if kwargs['_']:
+    print("Using external settings.")
     main_loop(**kwargs)
   else:
+    print("No external settings found.")
     main_loop(None, 'https://api.hypixel.net/status?key='+input("Enter Hypixel api key:\n")+'&uuid=', input("Enter discord webhook link:\n"), input("Enter player to track:\n"))
