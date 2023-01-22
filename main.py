@@ -1,68 +1,61 @@
-def send_message(webhook_link, embed): # function for uploading data 
-    from discord_webhook import DiscordWebhook
-    webhook = DiscordWebhook(url=webhook_link)
-    webhook.add_embed(embed)
-    webhook.execute() # send message on webhook
+from json_to_discord_message import *
 
-def generate_embed(session, name, now, old_session, old_now):
-    from discord_webhook import DiscordEmbed
-    from datetime import datetime as dt
-    if session != "None":
-        embed = DiscordEmbed(title="Update!", description=f'`{name}` has joined `{session["gameType"]}` in `{session["mode"]}` on {now}')
-        embed.add_embed_field(name='Current game', value=f"`{session['gameType']}`")
-        embed.add_embed_field(name='Current mode', value=f"`{session['mode']}`")
-        embed.add_embed_field(name='Current time', value=now)
-        if old_session['online']:
-            embed.add_embed_field(name='Previous game', value=f"`{old_session['gameType']}`")
-            embed.add_embed_field(name='Previous mode', value=f"`{old_session['mode']}`")
-            time_spent = dt.strptime(now, '`%B %d %Y`, `%H:%M:%S`') - dt.strptime(old_now, '`%B %d %Y`, `%H:%M:%S`')
-            time_spent = time_spent.seconds
-            hours = (time_spent-time_spent%3600) // 3600
-            time_spent -= hours * 3600
-            mins = (time_spent-time_spent%60) // 60
-            time_spent -= mins * 60
-            embed.add_embed_field(name='Time spent', value=f'`{str(hours).zfill(2)}:{str(mins).zfill(2)}:{str(time_spent).zfill(2)}`')
-        embed.set_color('0x00ff00')
-    else:
-        embed = DiscordEmbed(title="Update!", description=f'`{name}` has left `{old_session["gameType"]}`, `{old_session["mode"]}` on {now}')
-        embed.add_embed_field(name='Previous game', value=f"`{old_session['gameType']}`")
-        embed.add_embed_field(name='Previous mode', value=f"`{old_session['mode']}`")
-        embed.add_embed_field(name='Current time', value=now)
-        embed.set_color('0xff0000')
-    
-    return embed
-def write_message(session, name, old_session, old_now): # function for formatting data
-    import datetime as dt
-    now = dt.datetime.now(dt.timezone(dt.timedelta(hours=+1))).strftime('`%B %d %Y`, `%H:%M:%S`')
-    if session['online']:
-        embed = generate_embed(session, name, now, old_session, old_now)
-    else:
-        embed = generate_embed("None", name, now, old_session, old_now)
-    return [embed, now]
-
-def main_loop(_, hypixel_api_key, webhook_link, name):
+def interperet_data(cd, ct, lu, lt):
     import requests
-    from time import sleep
-    current_session = {"online": False}
-    uuid = requests.get("https://api.mojang.com/users/profiles/minecraft/"+name).json()['id']
-    old_now = None
-    while True:
-        df = requests.get(hypixel_api_key+uuid).json()
-        if df['session'] != current_session:
-            old_session = current_session
-            current_session = df['session']
-            embed, old_now = write_message(current_session, name, old_session, old_now)
-            send_message(webhook_link, embed)
-        sleep(1) # prevent ratelimiting
+    import datetime
+    if not cd["success"]:
+        print("epic fail")
+        return
+    
+    player = requests.get("https://playerdb.co/api/player/minecraft/"+cd["uuid"]).json()["data"]["player"]["username"]
 
-def main(): # checks if the code is ran as a file
-  from kwargs import kwargs
-  if kwargs['_']:
-    kwargs['hypixel_api_key'] = 'https://api.hypixel.net/status?key='+kwargs['hypixel_api_key']+'&uuid='
-    print("Using external settings.")
-    main_loop(**kwargs)
-  else:
-    print("No external settings found.")
-    main_loop(None, 'https://api.hypixel.net/status?key='+input("Enter Hypixel api key:\n")+'&uuid=', input("Enter discord webhook link:\n"), input("Enter player to track:\n"))
+    if not (lu["session"]["online"] or cd["session"]["online"]):
+        return [f"`{player}` is currently offline.", {}, 'ff0000']
+
+    time_spent = (ct - lt).seconds
+    h = (time_spent - time_spent % 3600) // 3600
+    m = (time_spent - time_spent % 60 - h*3600) // 60
+    s = (time_spent - h*3600 - m*60)
+
+    if not cd["session"]['online']:
+        return [f'`{player}` has left `{lu["session"]["gameType"]}`, `{lu["session"]["mode"]}` on `{ct.strftime("%B %d %Y`, `%H:%M:%S")}`', {
+            "Previous game": lu["session"]["gameType"],
+            "Previous mode": lu["session"]["mode"],
+            "Current Time": ct.strftime("%B %d %Y`, `%H:%M:%S"),
+            "Time spent": f"{str(h).zfill(2)}:{str(m).zfill(2)}:{str(s).zfill(2)}"
+        }, 'ff0000']
+    if not lu["session"]['online']:
+        return [f'`{player}` has joined `{cd["session"]["gameType"]}` in `{cd["session"]["mode"]}` on `{ct.strftime("%B %d %Y`, `%H:%M:%S")}`', {
+            "Current game": cd["session"]["gameType"],
+            "Current mode": cd["session"]["mode"],
+            "Current Time": ct.strftime("%B %d %Y`, `%H:%M:%S")
+        }, '00ff00']
+
+    return [f'`{player}` has moved to `{cd["session"]["mode"]}` in `{cd["session"]["gameType"]}` on `{ct.strftime("%B %d %Y`, `%H:%M:%S")}`', {
+        "Current game": cd["session"]["gameType"],
+        "Current mode": cd["session"]["mode"],
+        "Current Time": ct.strftime("%B %d %Y`, `%H:%M:%S"),
+        "Previous game": lu["session"]["gameType"],
+        "Previous mode": lu["session"]["mode"],
+        "Time spent": f"{str(h).zfill(2)}:{str(m).zfill(2)}:{str(s).zfill(2)}"
+    }, '00ff00']
+
+def on_change(cd, ct, lu, lt):
+    info = interperet_data(cd, ct, lu, lt)
+    send("Update!", info[0], info[1], kwargs['webhook_link'], info[2])
+
+
+def main():
+    import requests
+    global kwargs
+    from kwargs import kwargs
+    if not kwargs['use']:
+        kwargs['name'] = input("Playername to track:\n")
+        kwargs['hypixel_api_key'] = input("API key:\n")
+        kwargs['webhook_link'] = input("Webhook link:\n")
+
+    uuid = requests.get("https://api.mojang.com/users/profiles/minecraft/"+kwargs['name']).json()['id']
+    check_for_updates("https://api.hypixel.net/status", {"key": kwargs['hypixel_api_key'], "uuid": uuid}, on_change, 1)
+
 if __name__ == '__main__':
     main()
